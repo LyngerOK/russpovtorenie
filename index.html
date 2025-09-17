@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Тренажёр: непроверяемые гласные в корне</title>
+  <style>
+    :root{--bg:#f7f7fb;--card:#ffffff;--accent:#2b8a3e;--danger:#d33;--muted:#666}
+    html,body{height:100%;margin:0;font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:var(--bg);color:#111}
+    .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:40px}
+    .card{width:920px;max-width:98%;background:var(--card);border-radius:12px;box-shadow:0 8px 30px rgba(20,20,60,0.08);padding:20px}
+    h1{margin:0 0 6px;font-size:20px}
+    p.lead{margin:0 0 12px;color:var(--muted)}
+    .word-area{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    /* Неразмеченные буквы (как в оригинале) */
+    .letter{padding:4px 6px;border-radius:6px;font-size:34px;letter-spacing:2px;font-weight:700}
+    .vowel{cursor:pointer;border-bottom:2px dashed #cfcfcf}
+    .vowel.marked{background:#fff7d6;border-bottom-color:#f0c000}
+    /* Поля ввода: делаем крупнее и жирнее, чтобы буквы визуально совпадали с не вставленными */
+    .char-input{width:48px;height:56px;border:0;border-bottom:2px solid #bbb;font-size:34px;text-align:center;outline:none;background:transparent;font-weight:700;padding:4px;margin:0 4px}
+    .char-input:focus{border-bottom-color:#333}
+    .btn{padding:10px 16px;border-radius:8px;border:0;background:#1976d2;color:white;font-weight:600;cursor:pointer}
+    .btn.secondary{background:#777}
+    .controls{margin-top:18px;display:flex;gap:12px;align-items:center}
+    .indicator{width:18px;height:18px;border-radius:50%;background:#ddd}
+    .indicator.green{background:var(--accent)}
+    .indicator.red{background:var(--danger)}
+    .small{font-size:13px;color:var(--muted)}
+    .result{margin-top:18px;padding:14px;border-radius:8px;background:#f3f6f9}
+    .final{display:none;margin-top:18px}
+    .final.show{display:block}
+    .big-num{font-size:28px;font-weight:700}
+    .correct-word{color:var(--accent);font-weight:700}
+    .wrong-word{color:var(--danger);font-weight:700}
+    footer{margin-top:12px;font-size:13px;color:var(--muted)}
+    .consonant{font-weight:700;font-size:34px;padding:4px 6px}
+    .hint{font-size:13px;color:var(--muted);margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Тренажёр: непроверяемые безударные гласные в корне</h1>
+      <p class="lead">Заполните пропущенные (подчёркнутые) буквы. Нажмите «Подтвердить». Слова идут в случайном порядке, без повтора.</p>
+
+      <div id="main">
+        <div class="word-area">
+          <div id="wordDisplay" class="word" aria-live="polite"></div>
+        </div>
+
+        <div class="controls">
+          <button id="checkBtn" class="btn">Подтвердить</button>
+          <div id="indicator" class="indicator" title="Результат"></div>
+          <div style="margin-left:auto" class="small">Осталось: <span id="leftCount">0</span></div>
+        </div>
+
+        <div id="resultBox" class="result" style="display:none"></div>
+
+      </div>
+
+      <div id="final" class="final">
+        <div>Сессия завершена.</div>
+        <div style="display:flex;gap:20px;align-items:center;margin-top:8px">
+          <div>Правильно: <span id="correctCount" class="big-num">0</span></div>
+          <div>Неправильно: <span id="wrongCount" class="big-num">0</span></div>
+        </div>
+        <div style="margin-top:12px">
+          <button id="restartBtn" class="btn">Заново</button>
+        </div>
+      </div>
+
+      <footer>Подсказка: введите буквы в ПРОПУСКИ и нажмите «Подтвердить».</footer>
+    </div>
+  </div>
+
+<script>
+// Список слов, взятый с фотографии
+const WORDS = [
+  "авангард","авантюра","адвокат","альманах","аннотация","аномалия","антагонизм","апартаменты","аплодисменты","апелляция",
+  "багаж","бойкот",
+  "вакансия","ватрушка","ветеринар","винегрет",
+  "габариты","гарнизон","горизонт",
+  "дезертир","декларация","дефицит","дилетант","директива","досконально",
+  "игнорировать","иждивенец","интеллигентный",
+  "кавычки","каламбур","каморка","карнавал","катастрофа","коварный","колдовать","комбинировать","компетентный","компоновать","компромисс","конфорка","корифей",
+  "линолеум",
+  "меридиан","меценат","мотивировать",
+  "наваждение","ностальгия",
+  "оригинальный",
+  "палисадник","панорама","парадокс","пессимист","поролон","предварительный","привередливый","привилегия","примитивный","приоритет",
+  "реабилитация","регламент","резиденция","реставрировать",
+  "семинар","сертификат","сиреневый","стипендия","стремиться","суверенитет",
+  "теория"
+];
+
+// Гласные буквы (русские)
+const VOWELS = new Set(["а","о","е","и","ы","у","э","ю","я","ё"]);
+
+let pool = [];
+let currentIndex = 0;
+let currentWord = "";
+let stats = {correct:0, wrong:0};
+
+const wordDisplay = document.getElementById('wordDisplay');
+const checkBtn = document.getElementById('checkBtn');
+const indicator = document.getElementById('indicator');
+const resultBox = document.getElementById('resultBox');
+const leftCount = document.getElementById('leftCount');
+const final = document.getElementById('final');
+const correctCount = document.getElementById('correctCount');
+const wrongCount = document.getElementById('wrongCount');
+const restartBtn = document.getElementById('restartBtn');
+
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+}
+
+function startSession(){
+  pool = WORDS.slice();
+  shuffle(pool);
+  currentIndex = 0;
+  stats = {correct:0, wrong:0};
+  final.classList.remove('show');
+  resultBox.style.display='none';
+  indicator.className='indicator';
+  leftCount.textContent = pool.length - currentIndex;
+  showNext();
+}
+
+// Создаёт DOM для текущего слова — заменяет гласные на input
+function renderWord(word){
+  wordDisplay.innerHTML='';
+  // For accessibility we'll keep a simple span or inputs
+  for(let i=0;i<word.length;i++){
+    const ch = word[i];
+    if(VOWELS.has(ch.toLowerCase())){
+      const inp = document.createElement('input');
+      inp.type='text'; inp.maxLength=1; inp.className='char-input';
+      inp.setAttribute('data-pos', i);
+      inp.setAttribute('aria-label', 'буква ' + (i+1));
+      // underline style already via CSS
+      wordDisplay.appendChild(inp);
+    } else {
+      const span = document.createElement('span'); span.className='consonant';
+      span.textContent = ch;
+      wordDisplay.appendChild(span);
+    }
+  }
+  // focus first input
+  const firstInput = wordDisplay.querySelector('input');
+  if(firstInput) firstInput.focus();
+}
+
+function getUserFilled(){
+  const inputs = wordDisplay.querySelectorAll('input');
+  const chars = currentWord.split('');
+  inputs.forEach(inp=>{
+    const pos = Number(inp.getAttribute('data-pos'));
+    const val = (inp.value||'').trim();
+    chars[pos]= val ? val[0] : '_';
+  });
+  return chars.join('');
+}
+
+function showNext(){
+  if(currentIndex>=pool.length){
+    // finish
+    endSession();
+    return;
+  }
+  currentWord = pool[currentIndex];
+  renderWord(currentWord);
+  indicator.className='indicator';
+  resultBox.style.display='none';
+  leftCount.textContent = pool.length - currentIndex;
+}
+
+function normalize(s){
+  return s.normalize('NFC').toLowerCase();
+}
+
+checkBtn.addEventListener('click', ()=>{
+  // build filled word
+  const user = getUserFilled();
+  // if any input empty, treat as wrong but show message
+  const anyEmpty = wordDisplay.querySelectorAll('input');
+  let hasEmpty=false;
+  anyEmpty.forEach(i=>{ if(!i.value) hasEmpty=true; });
+  const correct = normalize(currentWord);
+  if(normalize(user)===correct){
+    stats.correct++;
+    indicator.className='indicator green';
+    resultBox.style.display='block';
+    resultBox.innerHTML = '<div class="correct-word">Правильно!</div>';
+    currentIndex++;
+    // сразу показываем следующее слово
+    setTimeout(showNext, 700);
+  } else {
+    stats.wrong++;
+    indicator.className='indicator red';
+    resultBox.style.display='block';
+    // show the correct spelling
+    resultBox.innerHTML = '<div>Неправильно. Правильно: <span class="wrong-word">'+currentWord+'</span></div>';
+    currentIndex++;
+    setTimeout(showNext, 1400);
+  }
+});
+
+function endSession(){
+  // show stats
+  correctCount.textContent = stats.correct;
+  wrongCount.textContent = stats.wrong;
+  final.classList.add('show');
+  // hide main area
+  wordDisplay.innerHTML='';
+  indicator.className='indicator';
+  resultBox.style.display='none';
+  leftCount.textContent = 0;
+}
+
+restartBtn.addEventListener('click', ()=> startSession());
+
+// allow typing: move focus to next input automatically
+document.addEventListener('input', (e)=>{
+  if(e.target && e.target.classList && e.target.classList.contains('char-input')){
+    const val = e.target.value;
+    if(val.length>=1){
+      // uppercase single letter
+      e.target.value = val[0];
+      // move
+      const all = Array.from(wordDisplay.querySelectorAll('input'));
+      const idx = all.indexOf(e.target);
+      if(idx!==-1 && idx+1<all.length) all[idx+1].focus();
+    }
+  }
+});
+
+// allow Enter to submit
+document.addEventListener('keydown', (e)=>{
+  // Enter submits
+  if(e.key==='Enter'){
+    checkBtn.click();
+    return;
+  }
+  // Backspace behavior on inputs: если поле пустое, прыгаем к предыдущему заполненному и стираем
+  if(e.key==='Backspace' && e.target && e.target.classList && e.target.classList.contains('char-input')){
+    const inp = e.target;
+    // allow normal backspace to delete a character if there's something
+    if(inp.value && inp.value.length>0){
+      // default browser behavior will remove it; do nothing special
+      return;
+    }
+    // if empty -> prevent default and remove previous filled input
+    e.preventDefault();
+    const all = Array.from(wordDisplay.querySelectorAll('input'));
+    const idx = all.indexOf(inp);
+    if(idx>0){
+      // find previous with a value (previous inserted letter). If none, pick immediate previous.
+      let j = idx-1;
+      while(j>=0 && all[j].value==='') j--;
+      if(j<0) j = idx-1; // if none filled, still go to immediate previous
+      if(j>=0){
+        all[j].value = '';
+        all[j].focus();
+      }
+    }
+  }
+});
+
+startSession();
+</script>
+</body>
+</html>
